@@ -351,14 +351,14 @@ class AntiSpam:
             return True, None
         
         if db.is_muted(chat_id, user_id):
-            offender = db.get_offender(chat_id, user_id)
-            mute_until = datetime.fromisoformat(offender['muted_until'])
-            remaining = int((mute_until - datetime.now()).total_seconds() / 60)
-            if remaining <= 0:
-                db.unmute_user(chat_id, user_id)
-                return True, None
-            reason = offender.get('last_reason', 'неизвестно')
-            return False, f"🔇 **ВЫ В МУТЕ!**\nОсталось: {remaining} мин\nПричина: {reason}"
+    offender = db.get_offender(chat_id, user_id)
+    mute_until = datetime.fromisoformat(offender['muted_until'])
+    remaining = int((mute_until - datetime.now()).total_seconds() / 60)
+    if remaining <= 0:
+        db.unmute_user(chat_id, user_id)
+        return True, None
+    # Просто удаляем сообщение, но НЕ пишем предупреждение
+    return False, None  # <--- ВОТ ТАК!
         
         current_time = time.time()
         key = f"{chat_id}:{user_id}"
