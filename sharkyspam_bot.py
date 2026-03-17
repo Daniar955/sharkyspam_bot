@@ -796,10 +796,180 @@ def set_caps(message):
         val = int(message.text.split()[1])
         if 0 <= val <= 100:
             db.update_setting(chat_id, 'caps_limit', val)
-            bot.reply
+            bot.reply_to(message, f"✅ Капс: {val}%")
+    except:
+        bot.reply_to(message, "❌ /set_caps [0-100]")
+
+@bot.message_handler(commands=['set_emoji'])
+def set_emoji(message):
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+    if not is_admin(chat_id, user_id): 
+        bot.reply_to(message, "❌ Только админы!")
+        return
+    try:
+        val = int(message.text.split()[1])
+        if 0 <= val <= 20:
+            db.update_setting(chat_id, 'emoji_limit', val)
+            bot.reply_to(message, f"✅ Эмодзи: {val}")
+    except:
+        bot.reply_to(message, "❌ /set_emoji [0-20]")
+
+@bot.message_handler(commands=['set_link_kd'])
+def set_link_kd(message):
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+    if not is_admin(chat_id, user_id): 
+        bot.reply_to(message, "❌ Только админы!")
+        return
+    try:
+        val = int(message.text.split()[1])
+        if 0 <= val <= 60:
+            db.update_setting(chat_id, 'link_kd', val)
+            bot.reply_to(message, f"✅ Кд ссылок: {val} мин")
+    except:
+        bot.reply_to(message, "❌ /set_link_kd [0-60]")
+
+@bot.message_handler(commands=['set_warn_limit'])
+def set_warn_limit(message):
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+    if not is_admin(chat_id, user_id): 
+        bot.reply_to(message, "❌ Только админы!")
+        return
+    try:
+        val = int(message.text.split()[1])
+        if 1 <= val <= 10:
+            db.update_setting(chat_id, 'warn_limit', val)
+            bot.reply_to(message, f"✅ Лимит варнов: {val}")
+    except:
+        bot.reply_to(message, "❌ /set_warn_limit [1-10]")
+
+@bot.message_handler(commands=['set_mute_time'])
+def set_mute_time(message):
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+    if not is_admin(chat_id, user_id): 
+        bot.reply_to(message, "❌ Только админы!")
+        return
+    try:
+        minutes = int(message.text.split()[1])
+        if 1 <= minutes <= 60:
+            seconds = minutes * 60
+            db.update_setting(chat_id, 'mute_time', seconds)
+            bot.reply_to(message, f"✅ Время мута: {minutes} мин")
+    except:
+        bot.reply_to(message, "❌ /set_mute_time [1-60] (МИНУТЫ)")
+
+@bot.message_handler(commands=['set_max_len'])
+def set_max_len(message):
+    chat_id = message.chat.id
+    user_id = message.from_user.id
+    if not is_admin(chat_id, user_id): 
+        bot.reply_to(message, "❌ Только админы!")
+        return
+    try:
+        val = int(message.text.split()[1])
+        if 10 <= val <= 5000:
+            db.update_setting(chat_id, 'max_length', val)
+            bot.reply_to(message, f"✅ Макс длина: {val} симв.")
+    except:
+        bot.reply_to(message, "❌ /set_max_len [10-5000]")
+
+# ============================================
+# CALLBACK HANDLERS
+# ============================================
+@bot.callback_query_handler(func=lambda call: True)
+def handle_callback(call):
+    chat_id = call.message.chat.id
+    user_id = call.from_user.id
+    
+    if not is_admin(chat_id, user_id):
+        bot.answer_callback_query(call.id, "❌ Только админы!")
+        return
+    
+    if call.data.startswith('toggle_'):
+        function = call.data.replace('toggle_', '') + '_enabled'
+        new_state = db.toggle_function(chat_id, function)
+        status = "✅ ВКЛ" if new_state else "❌ ВЫКЛ"
+        bot.answer_callback_query(call.id, f"Функция {status}")
+        functions_menu(call.message)
+
+# ============================================
+# ОБРАБОТЧИКИ СООБЩЕНИЙ
+# ============================================
+@bot.message_handler(content_types=['new_chat_members'])
+def welcome_new(message):
+    chat_id = message.chat.id
+    settings = db.get_group_settings(chat_id)
+    
+    for member in message.new_chat_members:
+        if member.id == bot.get_me().id:
+            bot.reply_to(message, 
+                "🦈 **SHARKYSPAM БОТ АКТИВИРОВАН!**\n"
+                "👑 /functions - управление\n"
+                "⚙️ /settings - настройки",
+                parse_mode='Markdown'
+            )
+            creator = message.from_user
+            db.add_group_admin(chat_id, creator.id, get_username(creator), SUPER_ADMIN_ID)
+        
+        elif settings['welcome_enabled']:
+            greeting = db.get_greeting(chat_id).replace('{user}', f"@{get_username(member)}")
+            bot.reply_to(message, greeting, parse_mode='Markdown')
+
+@bot.message_handler(content_types=['text', 'photo', 'video', 'document'])
+def handle_message(message):
+    if message.text and message.text.startswith('/'):
+        return
+    
+    if message.chat.type == 'private':
+        bot.reply_to(message, "🦈 Добавь меня в группу!")
+        return
+    
+    is_allowed, warning = spam_filter.check_message(message)
+    
+    if not is_allowed and warning:
+        try:
+            bot.delete_message(message.chat.id, message.message_id)
+            bot.send_message(message.chat.id, warning)
+        except:
+            pass
+
+# ============================================
+# ЗАПУСК НА RENDER
+# ============================================
+@app.route('/')
+def home():
+    return "🦈 SHARKYSPAM БОТ РАБОТАЕТ! 🔥", 200
+
+@app.route(f'/{TOKEN}', methods=['POST'])
+def webhook():
+    if request.headers.get('content-type') == 'application/json':
+        json_string = request.get_data().decode('utf-8')
+        update = telebot.types.Update.de_json(json_string)
+        bot.process_new_updates([update])
+        return '', 200
+    return 'Wrong content type', 403
+
+def set_webhook():
+    print("🔄 Настройка вебхука...")
+    RENDER_URL = os.environ.get('RENDER_EXTERNAL_URL')
+    if not RENDER_URL:
+        print("❌ Нет RENDER_EXTERNAL_URL!")
+        return False
+    
+    webhook_url = f"{RENDER_URL}/{TOKEN}"
+    bot.remove_webhook()
+    time.sleep(1)
+    bot.set_webhook(url=webhook_url)
+    
+    me = bot.get_me()
+    print(f"✅ Бот @{me.username} запущен!")
+    return True
 
 if __name__ == '__main__':
-    print("🔥 ЗАПУСК АНТИСПАМ БОТА")
+    print("🔥 ЗАПУСК SHARKYSPAM БОТА")
     set_webhook()
     port = int(os.environ.get('PORT', 10000))
     app.run(host='0.0.0.0', port=port)
